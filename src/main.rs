@@ -73,7 +73,7 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
 
                 if let SocketAddr::V4(ipv4_addr) = src {
                     let ip_addr = ipv4_addr.ip();
-                    let lobbies =  vec![Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1, title: ['T', 'E', 'S', 'T',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '] }, Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1, title: ['T', 'E', 'S', 'T',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '] }];
+                    let lobbies =  vec![Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1, title: ['T', 'E', 'S', 'T',' ',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '] }, Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1, title: ['T', 'E', 'S', 'T','2',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '] }];
                     let bytes = serialize(&lobbies).expect("Serialization failed");
 
                     println!("{:?}", bytes);
