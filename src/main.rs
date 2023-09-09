@@ -1,9 +1,23 @@
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr, Ipv4Addr};
 use std::io::Result;
 use num_derive::FromPrimitive;    
 use num_traits::FromPrimitive;
+use serde_derive::{Serialize, Deserialize};
+use bincode::{serialize};
 
 const BUFFER_SIZE: usize = 1024;
+
+#[derive(Copy, Clone)]
+#[derive(Serialize, Deserialize)]
+
+// A vector is 8 bytes with first byte being
+struct Lobby {
+    ip: Ipv4Addr,
+    players: u8,
+    max_players: u8,
+    match_type_id: u8,
+    map_id: u8
+}
 
 #[allow(unreachable_code)]
 fn main() -> Result<()> {
@@ -34,8 +48,8 @@ fn main() -> Result<()> {
 #[derive(FromPrimitive)]
 enum ResponseType {
     UNKNOWN,
-    GET_LOBBIES,
-    CREATE_LOBBY
+    GetLobby,
+    CreateLobby
 }
 
 fn get_packet(socket : &UdpSocket) -> Result<()> {
@@ -53,13 +67,23 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
         let mut byte_index = 1; // we read first byte
 
         match ResponseType::from_u8(first_byte) {
-            Some(ResponseType::GET_LOBBIES) => {
-                println!("Received response type {:?}", ResponseType::GET_LOBBIES);
-                // Handle the 0x01 case
+            Some(ResponseType::GetLobby) => {
+                println!("Received response type {:?}", ResponseType::GetLobby);
+
+                if let SocketAddr::V4(ipv4_addr) = src {
+                    let ip_addr = ipv4_addr.ip();
+                    let lobbies =  vec![Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1 }, Lobby { ip: *ip_addr, players: 1, max_players: 8, match_type_id: 1, map_id: 1 }];
+                    let bytes = serialize(&lobbies).expect("Serialization failed");
+
+                    println!("{:?}", bytes);
+                    socket.send_to(&bytes, &src)?;
+                } else {
+                    println!("Received data from a non-IPv4 address");
+                }
             }
-            Some(ResponseType::CREATE_LOBBY) => {
-                println!("Received response type {:?}", ResponseType::CREATE_LOBBY);
-                // Handle the 0x02 case
+            Some(ResponseType::CreateLobby) => {
+                println!("Received response type {:?}", ResponseType::CreateLobby);
+                socket.send_to(buf, &src)?;
             }
             _ => {
                 println!("Received an unknown response type: 0x{:02X}", first_byte);
@@ -70,9 +94,6 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
         println!("Received an empty response");
         // Handle the case where the response is empty
     }
-
-
-    socket.send_to(buf, &src)?;
 
     Ok(())
 }
