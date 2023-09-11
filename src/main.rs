@@ -124,7 +124,7 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
                     let item_exists = lobbies.iter().any(|item| item.ip == *ip_addr);
                     // Push the new item if it doesn't exist
                     if !item_exists {
-                        lobbies.push(Lobby { ip: *ip_addr, players: 3, max_players: 10, mpsetup: mpsetup });
+                        lobbies.push(Lobby { ip: *ip_addr, players: 0, max_players: 8, mpsetup: mpsetup });
                     } else {
                         println!("{:?} is already a lobby", *ip_addr);
                     }
