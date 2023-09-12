@@ -7,6 +7,10 @@ use bincode::{serialize, deserialize};
 use std::mem;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
+use std::collections::HashMap;
+use rand::Rng;
+use std::convert::TryInto;
+use std::ptr;
 
 const BUFFER_SIZE: usize = 1024;
 
@@ -41,16 +45,33 @@ struct Mpsetup {
 #[derive(Copy, Clone)]
 #[derive(Serialize, Deserialize)]
 
-// A vector is 8 bytes with first byte being
+// A vector is 8 bytes with first byte being length of vec
 struct Lobby {
-    ip: Ipv4Addr,
+    id: u8,
     players: u8,
     max_players: u8,
     mpsetup: Mpsetup
 }
 
+#[derive(Serialize, Deserialize)]
+
+struct PlayerState {
+    player_id: u32,
+    x: f32,
+    y: f32,
+    z: f32
+}
+
+#[derive(Serialize, Deserialize)]
+
+struct Gamestate {
+    ready: bool,
+    players: Vec<PlayerState>
+}
+
 lazy_static! {
     static ref GLOBAL_LOBBIES: Mutex<Vec<Lobby>> = Mutex::new(Vec::new());
+    static ref GLOBAL_GAMESTATES: Mutex<HashMap<u8, Gamestate>> = Mutex::new(HashMap::new());  // lobby id/gamestate
 }
 
 #[allow(unreachable_code)]
@@ -83,7 +104,8 @@ fn main() -> Result<()> {
 enum ResponseType {
     UNKNOWN,
     GetLobby,
-    CreateLobby
+    CreateLobby,
+    JoinLobby
 }
 
 fn get_packet(socket : &UdpSocket) -> Result<()> {
@@ -102,34 +124,33 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
         match ResponseType::from_u8(first_byte) {
             Some(ResponseType::GetLobby) => {
                 //println!("Received response type {:?}", ResponseType::GetLobby);
+                let lobbies = GLOBAL_LOBBIES.lock().unwrap();
+                let bytes = serialize(&*lobbies).expect("Serialization failed");
 
-                if let SocketAddr::V4(ipv4_addr) = src {
-                    let ip_addr = ipv4_addr.ip();
-                    let lobbies = GLOBAL_LOBBIES.lock().unwrap();
-                    let bytes = serialize(&*lobbies).expect("Serialization failed");
-
-                    //println!("{:?}", bytes);
-                    socket.send_to(&bytes, &src)?;
-                } else {
-                    println!("Received data from a non-IPv4 address");
-                }
+                socket.send_to(&bytes, &src)?;
             }
             Some(ResponseType::CreateLobby) => {
-                let bytes_to_cast = &buf[1..(mem::size_of::<Mpsetup>())];
+                let player_id = u32::from_be_bytes((&buf[2..6]).try_into().unwrap());
+                let bytes_to_cast = &buf[6..(mem::size_of::<Mpsetup>())];
                 let mpsetup: Mpsetup = deserialize(&bytes_to_cast).unwrap();
 
                 if let SocketAddr::V4(ipv4_addr) = src {
                     let ip_addr = ipv4_addr.ip();
                     let mut lobbies = GLOBAL_LOBBIES.lock().unwrap();
-                    let item_exists = lobbies.iter().any(|item| item.ip == *ip_addr);
-                    // Push the new item if it doesn't exist
-                    if !item_exists {
-                        lobbies.push(Lobby { ip: *ip_addr, players: 0, max_players: 8, mpsetup: mpsetup });
-                    } else {
-                        println!("{:?} is already a lobby", *ip_addr);
-                    }
 
-                    //println!("{:?}", bytes);
+                    let mut rng = rand::thread_rng();
+
+                    // Generate a random u32
+                    let lobby_id: u8 = rng.gen();
+
+                    lobbies.push(Lobby { id: lobby_id, players: 1, max_players: 8, mpsetup: mpsetup });
+
+                    let mut gameStates = GLOBAL_GAMESTATES.lock().unwrap();
+                    gameStates.insert(lobby_id, Gamestate { ready: false, players: vec![PlayerState {player_id: player_id, x: 0.0, y: 0.0, z: 0.0}]});
+
+                    // TODO ADD POLLING TO LOBBIES
+                    buf[0] = lobby_id;
+                
                     socket.send_to(&buf, &src)?;
                 } else {
                     println!("Received data from a non-IPv4 address");
@@ -137,6 +158,36 @@ fn get_packet(socket : &UdpSocket) -> Result<()> {
 
                 println!("Received setup options {:?}", mpsetup);
                 socket.send_to(buf, &src)?;
+            }
+            Some(ResponseType::JoinLobby) => {
+                let lobby_id = &buf[1];
+                let player_id = u32::from_be_bytes((&buf[2..6]).try_into().unwrap());
+
+                let mut gamestates = GLOBAL_GAMESTATES.lock().unwrap();
+                
+                // Search for a record with the specified value
+                let mut found_gamestate: Option<&u8> = None;
+
+                for (key, gamestate) in gamestates.iter_mut() {
+                    if *key == *lobby_id {
+                        gamestate.players.push(PlayerState { player_id: player_id, x: 0.0, y: 0.0, z: 0.0 });
+                        found_gamestate = Some(key);
+                        
+                        break;
+                    }
+                }
+                
+                match found_gamestate {
+                    Some(_) => {
+                       
+                    }
+                    None => {
+                        println!("lobby not found");
+                    }
+                }
+
+                //println!("{:?}", bytes);
+                socket.send_to(&buf, &src)?;
             }
             _ => {
                 println!("Received an unknown response type: 0x{:02X}", first_byte);
